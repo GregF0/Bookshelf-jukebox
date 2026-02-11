@@ -70,7 +70,7 @@ sudo pip3 install pn532pi curlify --break-system-packages
 
 # Download/Update jukebox scripts
 if [ ! -d "bookshelf-jukebox" ]; then
-    git clone https://github.com/YosoraLife/bookshelf-jukebox.git
+    git clone https://github.com/GregF0/bookshelf-jukebox.git
     cd bookshelf-jukebox
 else
     cd bookshelf-jukebox
