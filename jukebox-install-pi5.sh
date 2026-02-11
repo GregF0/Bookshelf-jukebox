@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# Bookshelf Jukebox Installer for Raspberry Pi 5 (Bookworm)
+# Bookshelf Jukebox Installer for Raspberry Pi 5 (DietPi / Bookworm)
+# SIMPLIFIED: Installs directly to system (no venv)
 
 set -e
 
-echo "Starting installation for Raspberry Pi 5 / Bookworm..."
+echo "Starting installation for Raspberry Pi 5 / DietPi..."
 
 ###################################
 ### START OF INSTALL NFC READER ###
@@ -15,14 +16,14 @@ cd ~
 # Install build dependencies
 echo "Installing build dependencies..."
 sudo apt-get update
-sudo apt-get install -y autoconf libtool libusb-dev automake make libglib2.0-dev git python3-venv python3-full python3-pip
+# Added python3-pip and libnfc dependencies
+sudo apt-get install -y autoconf libtool libusb-dev automake make libglib2.0-dev git python3-pip
 
 # Download libnfc source
 if [ ! -d "libnfc" ]; then
     echo "Cloning libnfc..."
     git clone https://github.com/YosoraLife/libnfc
 else
-    # Pull latest if exists
     cd libnfc
     git pull
     cd ..
@@ -31,9 +32,9 @@ fi
 # Configure NFC
 echo "Configuring NFC..."
 sudo mkdir -p /etc/nfc/devices.d
-cd libnfc # Ensure we are in libnfc dir
+cd libnfc
 
-# Use the sample config, renaming provided sample if needed
+# Use the sample config
 if [ -f "contrib/libnfc/pn532_spi_on_rpi.conf.sample" ]; then
     sudo cp -n contrib/libnfc/pn532_spi_on_rpi.conf.sample /etc/nfc/devices.d/pn532_spi_on_rpi.conf || true
 fi
@@ -58,23 +59,14 @@ sudo make install all
 cd ~
 
 # Install system dependencies
-sudo apt install -y python3-spidev plymouth plymouth-themes jq unclutter
+# Installing python packages via apt where available for system stability
+echo "Installing Python system packages..."
+sudo apt install -y python3-spidev python3-requests python3-gpiozero python3-lgpio plymouth plymouth-themes jq unclutter
 
-# Setup Python Virtual Environment (PEP 668 compliance)
-echo "Setting up Python Virtual Environment..."
-VENV_DIR="$HOME/bookshelf-jukebox/venv"
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-fi
-
-# Activate venv for installation
-source "$VENV_DIR/bin/activate"
-
-# Install Python dependencies in venv
-echo "Installing Python dependencies in venv..."
-pip install --upgrade pip
-pip install gpiozero lgpio rpi-lgpio  # gpiozero with lgpio backend for Pi 5
-pip install pn532pi curlify requests
+# Install remaining python packages via PIP globally
+# --break-system-packages is required on Bookworm to install outside venv/apt
+echo "Installing PIP packages globally..."
+sudo pip3 install pn532pi curlify --break-system-packages
 
 # Download/Update jukebox scripts
 if [ ! -d "bookshelf-jukebox" ]; then
@@ -89,21 +81,9 @@ fi
 chmod u+x jukebox-startup.sh
 chmod u+x jukebox-install-pi5.sh
 
-# Update startup script path in crontab - using wrapper
-echo "Creating venv-aware startup wrapper..."
-WRAPPER_SCRIPT="$HOME/bookshelf-jukebox/jukebox-startup-venv.sh"
-cat <<EOF > "$WRAPPER_SCRIPT"
-#!/bin/bash
-source $VENV_DIR/bin/activate
-# Run components in background
-python $HOME/bookshelf-jukebox/controls.py &
-python $HOME/bookshelf-jukebox/nfc_reader.py &
-python $HOME/bookshelf-jukebox/screen.py &
-EOF
-chmod +x "$WRAPPER_SCRIPT"
-
-# Add to crontab if not exists
-(crontab -l 2>/dev/null; echo "@reboot $WRAPPER_SCRIPT") | awk '!x[$0]++' | crontab -
+# Add startup script to crontab
+# Using the original jukebox-startup.sh directly since we are using system python
+(crontab -l 2>/dev/null; echo "@reboot /usr/bin/bash $HOME/bookshelf-jukebox/jukebox-startup.sh &") | awk '!x[$0]++' | crontab -
 
 # Setup Plymouth (Splash Screen)
 # Note: /boot/cmdline.txt moved to /boot/firmware/cmdline.txt in Bookworm/Pi 5
@@ -123,10 +103,8 @@ if [ -f "$SPLASH_IMG" ]; then
     sudo cp "$SPLASH_IMG" /usr/share/plymouth/themes/spinner/watermark.png
 fi
 
-# Hide mouse
+# Hide mouse for DietPi
 if command -v unclutter &> /dev/null; then
-    # Create autostart for openbox/lxde/etc if X11
-    # For now, just placing legacy config
     echo '/usr/bin/unclutter -idle 0.1 &' | sudo tee /etc/chromium.d/dietpi-unclutter > /dev/null
 fi
 
@@ -160,19 +138,18 @@ fi
 
 # Setup Plexamp Service
 cd plexamp
-# Ensure service file exists
 SERVICE_FILE="plexamp.service"
 if [ -f "$SERVICE_FILE" ]; then
-    # Use appropriate user
+    # Create service for CURRENT user (DietPi usually runs as root or dietpi)
+    # Original script used 'root' mostly.
     CURRENT_USER=$(whoami)
     sudo sed -i "s/User=pi/User=$CURRENT_USER/g" "$SERVICE_FILE"
-    # Fix home path: /home/pi -> /home/$USER
     sudo sed -i "s|/home/pi|$HOME|g" "$SERVICE_FILE"
     
     sudo cp "$SERVICE_FILE" /lib/systemd/system/
     sudo systemctl daemon-reload
     sudo systemctl enable plexamp
-    # Don't start automatically to allow claiming
+    
     echo "Plexamp installed. Please run 'node plexamp/js/index.js' manually to claim the player."
 else
     echo "Warning: $SERVICE_FILE not found."
