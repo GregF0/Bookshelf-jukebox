@@ -1,10 +1,9 @@
 #! /usr/bin/env python3
 # Bookshelf jukebox controls
 
-from gpiozero import Button, RotaryEncoder
-from signal import pause
-import os
+import RPi.GPIO as GPIO
 import time
+import os
 import settings
 from functions import *
 
@@ -21,7 +20,7 @@ PREV_PIN = settings.PREV_PIN                        # GPIO16 connected to the pr
 # Times for button presses
 SHORT_PRESS_TIME = settings.SHORT_PRESS_TIME        # Time for shortpress in seconds
 LONG_PRESS_TIME = settings.LONG_PRESS_TIME          # Time for longpress in seconds
-DEBOUNCE_TIME = settings.DEBOUNCE_TIME / 1000.0     # Convert ms to seconds
+DEBOUNCE_TIME = settings.DEBOUNCE_TIME              # Debounce time in milli seconds, default = 100. Increase when experience unwanted "extra" button presses 
 
 # Volume steps
 VOLUME_ADJUSTEMENT = settings.VOLUME_ADJUSTEMENT    # How much to add to the volume every step. Range: 0-100
@@ -35,7 +34,18 @@ START_VOLUME = settings.START_VOLUME                # Set volume level at start 
 ##########################################################################################################
 
 # General variables
-is_long_press = False
+PRESS_TIME_START = 0
+IS_PRESSED = False
+
+# Configure GPIO pins
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(CLK_PIN, GPIO.IN)
+GPIO.setup(DT_PIN, GPIO.IN)
+GPIO.setup(SW_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(NEXT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(PREV_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+prev_clk_state = GPIO.input(CLK_PIN)                        # Read the initial state of the rotary encoder's CLK pin
 
 ###################################################
 ### Autoplay functionality ########################
@@ -47,64 +57,84 @@ def autoplay():
         setState('playMedia')                               # Start playback
 
 ###################################################
-### Rotary encoder functionality ##################
+### Rotery encoder functionality ##################
 ###################################################
-def vol_up():
-    setState('volUp')
-
-def vol_down():
-    setState('volDown')
-
-# Initialize Rotary Encoder
-# Note: direction might need swapping depending on wiring. 
-# Adjust logic or swap callbacks if needed.
-rotary = RotaryEncoder(CLK_PIN, DT_PIN, bounce_time=0.01)
-rotary.when_rotated_clockwise = vol_up
-rotary.when_rotated_counter_clockwise = vol_down
+def rotary_encoder_callback(channel):
+    #global prev_clk_state
+    #if GPIO.input(CLK_PIN) != prev_clk_state:               # Detect state change of CLK pin
+    # Check state of the DT pin
+    if GPIO.input(DT_PIN) == GPIO.HIGH:                 # State DT pin is high? Then its turning counter-clockwise
+        setState('volDown')                             # Turn volume down
+    elif GPIO.input(DT_PIN) == GPIO.LOW:                # Else the state of DT pin is low. Then its turning clockwise
+        setState('volUp')                               # Turn volume up
+    prev_clk_state = GPIO.input(CLK_PIN)                # Set state for the next turn
 
 ###################################################
-### Rotary button functionality ###################
+### Rotery button functionality ###################
 ###################################################
-def shutdown():
-    global is_long_press
-    is_long_press = True
-    setState('stop')                                # Stop playing
-    os.system('sudo shutdown -h now')               # Shutdown system
-
-def handle_sw_release():
-    global is_long_press
-    if not is_long_press:
-        # Short press action
-        if getState('state') == 'stopped':               # Check if current state is stopped
-            setState('playMedia')                        # Start playback
-        else:
-            setState('playPause')                        # Pause playback
+def rotary_button_callback(channel):
+    global PRESS_TIME_START, IS_PRESSED
+    if GPIO.input(SW_PIN) == GPIO.LOW:                      # Detect button being pressed
+        PRESS_TIME_START = time.time()                      # Start tracking the time
+        IS_PRESSED = True                                   # Set variable for long press detection
+    elif GPIO.input(SW_PIN) == GPIO.HIGH:                   # Detect button being released
+        IS_PRESSED = False                                  # Reset variable for long press detection
     
-    is_long_press = False # Reset flag
+        # Handle short button press, Long button press (Poweroff) is handled by check_long_press()
+        press_duration = time.time() - PRESS_TIME_START      # Calculate press duration
+        if press_duration < SHORT_PRESS_TIME:                # Check for short press
+            if getState('state') == 'stopped':               # Check if current state is stopped
+                setState('playMedia')                        # Start playback
+            else:
+                setState('playPause')                        # Pause playback
 
-sw_button = Button(SW_PIN, pull_up=True, bounce_time=DEBOUNCE_TIME, hold_time=LONG_PRESS_TIME)
-sw_button.when_held = shutdown
-sw_button.when_released = handle_sw_release
+###################################################
+### Rotery button long press check ################
+###################################################
+def check_long_press():
+    global PRESS_TIME_START
+    if GPIO.input(SW_PIN) == GPIO.LOW:                      # Check if button is still being pressed
+        press_duration = time.time() - PRESS_TIME_START     # Calculate the time duration of it being pressed
+        if press_duration > LONG_PRESS_TIME:                # If button is being pressed long time shutdown system
+            setState('stop')                                # Stop playing
+            os.system('sudo shutdown -h now')               # Shutdown system
+    else:
+        PRESS_TIME_START = 0                                # Reset time tracking
+        IS_PRESSED = False                                  # Button is not pressed anymore, reset state
 
 ###############################################
-### Touch next/prev button functionality ######
+### Touch next button functionality ###########
 ###############################################
-def handle_next():
-    setState('next')
+def next_button_callback(channel):
+    setState('next')                                        # Play next song
 
-def handle_prev():
-    setState('prev')
+###################################################
+### Touch previous button functionality ###########
+###################################################
+def prev_button_callback(channel):
+    setState('prev')                                        # Play previous song
 
-next_btn = Button(NEXT_PIN, pull_up=True, bounce_time=DEBOUNCE_TIME)
-next_btn.when_pressed = handle_next
-
-prev_btn = Button(PREV_PIN, pull_up=True, bounce_time=DEBOUNCE_TIME)
-prev_btn.when_pressed = handle_prev
+###################################################
+### Set up interrupts for GPIO inputs #############
+###################################################
+GPIO.add_event_detect(CLK_PIN, GPIO.BOTH, callback=rotary_encoder_callback, bouncetime=int(10))
+GPIO.add_event_detect(SW_PIN, GPIO.BOTH, callback=rotary_button_callback, bouncetime=int(DEBOUNCE_TIME))
+GPIO.add_event_detect(NEXT_PIN, GPIO.FALLING, callback=next_button_callback, bouncetime=int(DEBOUNCE_TIME))
+GPIO.add_event_detect(PREV_PIN, GPIO.FALLING, callback=prev_button_callback, bouncetime=int(DEBOUNCE_TIME))
 
 ###################################################
 ### Autoplay at startup if enabled ################
 ###################################################
 autoplay()
 
-# Keep script running
-pause()
+try:
+    while True:
+        if IS_PRESSED == True:                              # Check for button press
+            check_long_press()                              # Check if (poweroff) button is being long pressed
+        time.sleep(0.1)                                     # Reduce CPU usage by adding a small delay
+
+except KeyboardInterrupt:
+    pass
+
+finally:
+    GPIO.cleanup()
