@@ -31,15 +31,6 @@ fi
 
 # Configure NFC
 echo "Configuring NFC..."
-# Enable SPI on Pi 5 (Bookworm)
-CONFIG_FILE="/boot/firmware/config.txt"
-if [ ! -f "$CONFIG_FILE" ]; then
-    CONFIG_FILE="/boot/config.txt"
-fi
-if ! grep -q "dtparam=spi=on" "$CONFIG_FILE"; then
-    echo "dtparam=spi=on" | sudo tee -a "$CONFIG_FILE"
-fi
-
 sudo mkdir -p /etc/nfc/devices.d
 cd libnfc
 
