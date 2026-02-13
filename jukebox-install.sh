@@ -36,11 +36,13 @@ sudo make install all
 cd ~
 
 # Install control tools
-sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter
-sudo pip install pn532pi curlify requests
+sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter xterm
+# Install python3-rpi-lgpio for Pi 5 GPIO compatibility if available, otherwise it falls back to existing setup or needs manual install
+sudo apt install -y python3-rpi-lgpio || echo "python3-rpi-lgpio not found, skipping..."
+sudo pip install pn532pi curlify requests --break-system-packages
 
 # Download the jukebox scripts:
-git clone https://gitlab.com/YosoraLife/bookshelf-jukebox.git
+git clone https://github.com/GregF0/Bookshelf-jukebox.git
 cd bookshelf-jukebox
 
 # Enable the startup script and make it start at boot:
@@ -50,7 +52,11 @@ chmod u+x jukebox-startup.sh
 (crontab -l; echo "@reboot /usr/bin/sh /root/bookshelf-jukebox/jukebox-startup.sh &")|awk '!x[$0]++'|crontab -
 
 # Set quiet startup screen:
-sudo sed -i 's/console=tty1/console=tty3 splash quiet plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0/' /boot/cmdline.txt
+if [ -f /boot/firmware/cmdline.txt ]; then
+    sudo sed -i 's/console=tty1/console=tty3 splash quiet plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0/' /boot/firmware/cmdline.txt
+else
+    sudo sed -i 's/console=tty1/console=tty3 splash quiet plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0/' /boot/cmdline.txt
+fi
 
 # Set plymouth startup theme
 sudo plymouth-set-default-theme -R spinner
