@@ -47,8 +47,13 @@ if ! command -v G_AGI &> /dev/null; then
 fi
 
 # Install control tools (Restored GUI tools: plymouth, unclutter, xterm)
-# Added chromium-browser to fix "xterm --kiosk" error (ensures browser is present)
-sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter xterm chromium-browser
+# Added chromium to fix "xterm --kiosk" error (on Bookworm package is 'chromium', not 'chromium-browser')
+sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter xterm chromium
+
+# Ensure chromium-browser command exists (legacy compatibility for DietPi scripts)
+if ! command -v chromium-browser &> /dev/null && command -v chromium &> /dev/null; then
+    sudo ln -s $(which chromium) /usr/bin/chromium-browser
+fi
 
 # Install python3-rpi-lgpio for Pi 5 GPIO compatibility
 # This system package MUST provide the RPi.GPIO module
