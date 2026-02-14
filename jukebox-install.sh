@@ -35,14 +35,24 @@ sudo make install all
 
 cd ~
 
-# Install control tools
+# Remove legacy RPi.GPIO to prevent conflicts
+sudo apt remove -y python3-rpi.gpio
+sudo pip uninstall -y RPi.GPIO
+
+# Install control tools (Restored GUI tools: plymouth, unclutter, xterm)
 sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter xterm
-# Install python3-rpi-lgpio for Pi 5 GPIO compatibility if available, otherwise it falls back to existing setup or needs manual install
-sudo apt install -y python3-rpi-lgpio || echo "python3-rpi-lgpio not found, skipping..."
-sudo pip install pn532pi curlify requests --break-system-packages
+
+# Install python3-rpi-lgpio for Pi 5 GPIO compatibility
+# This system package MUST provide the RPi.GPIO module
+sudo apt install -y python3-rpi-lgpio
+
+# Install python packages
+# Use --no-deps for pn532pi to prevent it from pulling the broken RPi.GPIO from PyPI
+sudo pip install --no-deps pn532pi
+sudo pip install curlify requests --break-system-packages
 
 # Download the jukebox scripts:
-git clone https://github.com/GregF0/Bookshelf-jukebox.git
+git clone https://github.com/GregF0/Bookshelf-jukebox.git bookshelf-jukebox
 cd bookshelf-jukebox
 
 # Enable the startup script and make it start at boot:
@@ -51,6 +61,7 @@ chmod u+x jukebox-startup.sh
 # Add startup script to crontab
 (crontab -l; echo "@reboot /usr/bin/sh /root/bookshelf-jukebox/jukebox-startup.sh &")|awk '!x[$0]++'|crontab -
 
+# Boot config update
 # Set quiet startup screen:
 if [ -f /boot/firmware/cmdline.txt ]; then
     sudo sed -i 's/console=tty1/console=tty3 splash quiet plymouth.ignore-serial-consoles logo.nologo vt.global_cursor_default=0/' /boot/firmware/cmdline.txt
