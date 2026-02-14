@@ -116,10 +116,21 @@ sudo apt-get update && sudo apt-get install -y nodejs
 curl https://plexamp.plex.tv/headless/Plexamp-Linux-headless-v4.12.4.tar.bz2 > plexamp.tar.bz2
 tar -xvf plexamp.tar.bz2
 
-# Start Plexamp for the first time
-node plexamp/js/index.js
+# Start Plexamp for the first time in background to allow configuration
+echo "Starting Plexamp initialization..."
+echo "Please wait a moment, then visit http://<YOUR_PI_IP>:32500 in your browser."
+echo "Claim your player, then come back here."
+node plexamp/js/index.js > plexamp_init.log 2>&1 &
+PLEX_PID=$!
 
-# User interaction required, fill in claim code and name player
+# Wait for user to confirm they have claimed the player
+echo ""
+read -p "Press ENTER once you have successfully claimed the player in the browser..."
+
+# Stop the temporary Plexamp process so we can install it as a service
+echo "Stopping temporary Plexamp process..."
+kill $PLEX_PID
+sleep 5
 
 # Change username
 sudo sed -i 's/pi/root/' plexamp/plexamp.service
