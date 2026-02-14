@@ -52,7 +52,11 @@ sudo pip install --no-deps pn532pi
 sudo pip install curlify requests --break-system-packages
 
 # Download the jukebox scripts:
-git clone https://github.com/GregF0/Bookshelf-jukebox.git bookshelf-jukebox
+if [ ! -d "bookshelf-jukebox" ]; then
+    git clone https://github.com/GregF0/Bookshelf-jukebox.git bookshelf-jukebox
+else
+    echo "Directory bookshelf-jukebox already exists. Skipping clone."
+fi
 cd bookshelf-jukebox
 
 # Enable the startup script and make it start at boot:
