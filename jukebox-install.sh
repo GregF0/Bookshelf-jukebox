@@ -39,8 +39,16 @@ cd ~
 sudo apt remove -y python3-rpi.gpio
 sudo pip uninstall -y RPi.GPIO
 
+# Define G_AGI fallback if not present (for non-DietPi systems or if not sourced)
+if ! command -v G_AGI &> /dev/null; then
+    G_AGI() {
+        sudo apt install -y "$@"
+    }
+fi
+
 # Install control tools (Restored GUI tools: plymouth, unclutter, xterm)
-sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter xterm
+# Added chromium-browser to fix "xterm --kiosk" error (ensures browser is present)
+sudo apt install -y python3 python3-spidev pip plymouth plymouth-themes jq unclutter xterm chromium-browser
 
 # Install python3-rpi-lgpio for Pi 5 GPIO compatibility
 # This system package MUST provide the RPi.GPIO module
